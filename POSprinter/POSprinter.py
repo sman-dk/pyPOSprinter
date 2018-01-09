@@ -6,10 +6,11 @@
 # this stuff is worth it, you can buy me a beer in return.
 # 
 
-"""version 1.0 - a POSprinter module for Python"""
+"""version 1.1 - a POSprinter module for Python"""
 class POSprinter:
     """This module prints text, images etc. for serial connected label printers (POS printer)"""
-    def __init__(self, port="/dev/ttyUSB0", baudrate=9600, bytesize=8, parity='N', stopbits=1, charWidth=44, pxWidth=284):
+    def __init__(self, port="/dev/ttyUSB0", baudrate=9600, bytesize=8, 
+        parity='N', stopbits=1, charWidth=44, pxWidth=284):
         """Set up serial port. Set width of of the printer/paper in number of characters and pixels."""
         # Multiple inheritance may become a nightmare, so we are importing the modules insted.
         try:
@@ -94,24 +95,30 @@ class POSprinter:
             self.printer.close()
         except:
             raise
-    def printImgFromFile(self, filename, resolution="high", align="center", scale=None, rotate=None):
+
+    def printImgFromFile(self, filename, resolution="high", align="center", scale=None, width=None, rotate=None):
         """Print an image from a file.
         resolution may be set to "high" or "low". Setting it to low makes the image a bit narrow (90x60dpi instead of 180x180 dpi) unless scale is also set.
         align may be set to "left", "center" or "right".
         scale resizes the image with that factor, where 1.0 is the full width of the paper.
-        rotate rotates the image (number of degrees"""
+        rotate rotates the image (number of degrees)"""
         try:
             import Image
             # Open file and convert to black/white (colour depth of 1 bit)
             img = Image.open(filename).convert("1")
-            if rotate:
-                img = img.rotate(rotate, expand=True)
-            self.printImgFromPILObject(img, resolution, align, scale)
+            self.printImgFromPILObject(img, resolution, align, scale, width, rotate)
         except:
             raise
-    def printImgFromPILObject(self, imgObject, resolution="high", align="center", scale=None):
+
+    def printImgFromPILObject(self, imgObject, resolution="high", align="center", scale=None, width=None, rotate=None):
         """The object must be a Python ImageLibrary object, and the colordepth should be set to 1."""
         try:
+            if rotate:
+                imgObject = imgObject.rotate(rotate, expand=True)
+            # If a width in px is set. If the scale factor is also set this is applied afterwords.
+            if width:
+                height = int(imgObject.size[1]*float(width)/imgObject.size[0])
+                imgObject = imgObject.resize([width, height])
             # If a scaling factor has been indicated
             if scale:
                 assert type(scale)==float
@@ -198,7 +205,10 @@ class POSprinter:
             except:
                 raise
 
-    def printFontText(self, text, resolution="high", align="left", fontFile="/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-B.ttf", textSize=25, rotate=None, bgColor=255, fontColor=0, scale=None, leading=0.25, returnPILObject=False, dontPrint=False):
+    def printFontText(self, text, resolution="high", align="left", 
+        fontFile="/usr/share/fonts/truetype/ubuntu-font-family/Ubuntu-B.ttf", 
+        textSize=25, rotate=None, bgColor=255, fontColor=0, scale=None, 
+        leading=0.25, returnPILObject=False, dontPrint=False, txtWidth=None):
         """Print text as a rendered image using a truetype font. Text may be be a list of string
         objects (one object per line). If a line is too wide the function will try to line wrap.
         Arg. 'leading' is the interline spacing in as a proportion of the height of a line.
@@ -207,9 +217,13 @@ class POSprinter:
         import ImageFont, ImageDraw, Image
         if resolution == "high":
             currentpxWidth = self.pxWidth * 2
+        else:
+            currentpxWidth = self.pxWidth
+        if not txtWidth:
+            txtWidth = currentpxWidth
         font = ImageFont.truetype(fontFile, textSize)
 
-        def splitList(currentpxWidth, txtList, font, newlineSplitOnly=False):
+        def splitList(txtWidth, txtList, font, newlineSplitOnly=False):
             """Each str/unicode in txtList equals one line when printet. Split at newlines and furthermore split if a line is too wide."""
             # First of search for newlines and split the list if a newline is found
             withoutNewlines = []
@@ -222,24 +236,24 @@ class POSprinter:
             txtListWrapped = []
             for txt in txtList:
                 # If the whole line is too wide, remove words until we are good
-                if font.getsize(txt)[0] > currentpxWidth:
+                if font.getsize(txt)[0] > txtWidth:
                     txtLen = len(txt)
                     for i in range(txtLen)[::-1]:
-                        if font.getsize(txt[:i+1])[0] <= currentpxWidth:
+                        if font.getsize(txt[:i+1])[0] <= txtWidth:
                             whitespaceEtc = [ " ", "\t", "-" ]
                             if txt[i] in whitespaceEtc:
                                 txtSplit = [ txt[:i+1].rstrip(), txt[i+1:] ]
-                                if font.getsize(txtSplit[1])[0] > currentpxWidth:
-                                    txtSplit = splitList(currentpxWidth, txtSplit, font)
+                                if font.getsize(txtSplit[1])[0] > txtWidth:
+                                    txtSplit = splitList(txtWidth, txtSplit, font)
                                     break
                                 else:
                                     break
                             # If there are no whitespaces etc. then split the word
                             elif not any(w in txt[:i+1] for w in whitespaceEtc):
-                                if font.getsize(txt[:i+1]+"-")[0] <= currentpxWidth:
+                                if font.getsize(txt[:i+1]+"-")[0] <= txtWidth:
                                     txtSplit = [ txt[:i+1].rstrip()+"-", txt[i+1:] ]
-                                    if font.getsize(txtSplit[1])[0] > currentpxWidth:
-                                        txtSplit = splitList(currentpxWidth, txtSplit, font)
+                                    if font.getsize(txtSplit[1])[0] > txtWidth:
+                                        txtSplit = splitList(txtWidth, txtSplit, font)
                                         break
                                     else:
                                         break
@@ -259,23 +273,24 @@ class POSprinter:
         leadingDots = int(font.getsize(u"Å")[0]*leading)
         if rotate in [ 90, 270 ]:
             # Don't wrap lines based on width when turned 90 or 270 degrees
-            txtList = splitList(currentpxWidth, txtList, font, newlineSplitOnly=True)
+            txtList = splitList(txtWidth, txtList, font, newlineSplitOnly=True)
         else:
             # Do wordwrapping etc.
-            txtList = splitList(currentpxWidth, txtList, font)
+            txtList = splitList(txtWidth, txtList, font)
 
         # Determine the size of the resulting text image
         size = [0,0]
         lineHeight = font.getsize("a")[1]
-        size = [ 0, ( leadingDots + lineHeight ) * len(txtList) - leadingDots ]
+        size = [ 0, ( leadingDots + lineHeight ) * len(txtList) + leadingDots]
+        # Find the width
         if rotate is 180:
             # Avoid right alignment of rotated text, if a line is less wide than the paper / currentpxWidth
             size[0] = currentpxWidth
         else:
             for txt in txtList:
-                txtWidth = font.getsize(txt)[0]
-                if txtWidth > size[0]:
-                    size[0] = txtWidth
+                maxWidth = font.getsize(txt)[0]
+                if maxWidth > size[0]:
+                    size[0] = maxWidth
         # Create the actual image containing the text
         img = Image.new("1",size)
         draw = ImageDraw.Draw(img)
