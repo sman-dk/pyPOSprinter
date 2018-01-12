@@ -298,6 +298,13 @@ class POSprinter:
         pointer = [0, 0]
         # For each line..
         for txt in txtList:
+            txtPxWidth = font.getsize(txt)[0]
+            if align == "left":
+                pointer[0] = 0
+            elif align == "right":
+                pointer[0] = size[0] - txtPxWidth
+            elif align == "center":
+                pointer[0] = (size[0] - txtPxWidth)/2
             draw.text(pointer, txt, font=font, fill=fontColor)
             pointer[1] += lineHeight + leadingDots
 
@@ -317,6 +324,17 @@ class POSprinter:
         if not dontPrint:
             self.printImgFromPILObject(img, resolution=resolution, align=align, scale=scale)
         if returnPILObject:
+            if align is not "left":
+                imgOld = img
+                img = Image.new("1",(txtWidth,imgOld.size[1]))
+                draw = ImageDraw.Draw(img)
+                draw.rectangle((0,0) + img.size,fill=bgColor)
+                pointer = [0, 0]
+                if align is "center":
+                    i = 2
+                else:
+                    i = 1
+                img.paste(imgOld,((txtWidth-imgOld.size[0])/i,0))
             return img
 
     def printLine(self, pxWidth=False, width=1.0, pxThickness=4, pxHeading=10, pxTrailing=10, resolution="high", returnPILObject=False, dontPrint=False):
