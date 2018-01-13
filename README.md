@@ -1,4 +1,4 @@
-You need pySerial and PIL (Python Image Library) for pyPOSprinter to work. On Debian/Ubuntu:
+You need pySerial and PIL (Python Image Library) for pyPOSprinter to work. On Debian/Ubuntu:  
 `apt-get install python-serial python-imaging`
 
 See example.py for an example of how to use pyPOSprinter. For more information simply import pyPOSprinter and see the help:
